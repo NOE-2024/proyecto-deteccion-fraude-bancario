@@ -282,7 +282,7 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
     with ctrl_col2:
         perfil_sim = st.selectbox(
             "🛡️ Escenario de Tráfico:",
-            ["Operación Normal (Mixto)", "Simulación de Ataque Masivo", "Modo Alta Seguridad"]
+            ["Operación Normal (Bajo Riesgo)", "Simulación de Ataque Masivo", "Modo Alta Seguridad"]
         )
         
     with ctrl_col3:
@@ -306,26 +306,29 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
     # --- BUCLE DE GENERACIÓN DE DATOS VARIADOS ---
     if run_stream:
         # 1. Asignación de Región/Provincia
-        prov_final = region_sel if region_sel != "Todas las Regiones" else random.choice(PROVINCIAS) if 'random' in globals() else np.random.choice(PROVINCIAS)
+        if region_sel != "Todas las Regiones":
+            prov_final = region_sel
+        else:
+            prov_final = str(np.random.choice(PROVINCIAS))
         
-        # 2. Asignación Aleatoria de Método y Banco
+        # 2. Listas extensas de Métodos y Bancos
         metodos_lista = ["Tarjeta de Débito", "Tarjeta de Crédito", "Transferencia CCI", "Yape / Plin", "Banca por Internet"]
-        bancos_lista = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif"]
+        bancos_lista = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif", "Pichincha"]
         
         metodo_final = str(np.random.choice(metodos_lista))
         banco_final = str(np.random.choice(bancos_lista))
 
         # 3. Variabilidad Realista de Montos y Distancias
-        monto_rand = round(float(np.random.choice([45.50, 120.00, 350.00, 1250.00, 4800.00, 11500.00], p=[0.35, 0.30, 0.20, 0.08, 0.05, 0.02])), 2)
-        distancia_rand = round(float(np.random.uniform(0.5, 120.0)), 1)
+        monto_rand = round(float(np.random.choice([25.50, 85.00, 240.00, 890.00, 3200.00, 9500.00], p=[0.35, 0.30, 0.20, 0.08, 0.05, 0.02])), 2)
+        distancia_rand = round(float(np.random.uniform(0.5, 150.0)), 1)
 
-        # 4. Asignación de Probabilidades de Estado según Escenario
-        if perfil_sim == "Operación Normal (Mixto)":
-            p_dist = [0.70, 0.12, 0.10, 0.08] # 70% Aprobada, 12% OTP, 10% Investigación, 8% Bloqueo
+        # 4. Probabilidades de Estado según el escenario seleccionado
+        if perfil_sim == "Operación Normal (Bajo Riesgo)":
+            p_dist = [0.75, 0.12, 0.08, 0.05] # 75% Aprobada, 12% OTP, 8% SOC, 5% Bloqueo
         elif perfil_sim == "Simulación de Ataque Masivo":
-            p_dist = [0.30, 0.20, 0.20, 0.30] # 30% Aprobada, 20% OTP, 20% Investigación, 30% Bloqueo
+            p_dist = [0.30, 0.20, 0.20, 0.30] # 30% Aprobada, 20% OTP, 20% SOC, 30% Bloqueo
         else: # Modo Alta Seguridad
-            p_dist = [0.50, 0.25, 0.10, 0.15]
+            p_dist = [0.55, 0.20, 0.10, 0.15]
 
         # Estados Versátiles
         estados_posibles = [
@@ -351,7 +354,7 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
 
         st.session_state["stream_data"].insert(0, nueva_tx)
         
-        # Mantener solo los últimos 50 registros
+        # Mantener solo los últimos 50 registros en memoria
         if len(st.session_state["stream_data"]) > 50:
             st.session_state["stream_data"].pop()
 
