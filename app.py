@@ -36,7 +36,7 @@ vista = st.sidebar.radio(
     [
         "📊 Dashboard General (Métricas Globales)",
         "🗺️ Análisis Geoespacial & Regiones",
-        "🔎 Evaluador de Transacciones (En Vivo)"
+        "🔎 Evaluador Simulación de Fraude (Individual)"
     ]
 )
 
@@ -86,14 +86,15 @@ if vista == "📊 Dashboard General (Métricas Globales)":
     with c_right:
         st.subheader("Relación Monto vs Distancia de Domicilio")
         
-        n_samples = min(200, max(30, int(base_tx / 100)))
+        # Muestra amplia de datos (500 casos)
+        n_samples = 500
         df_scatter = pd.DataFrame({
-            "Monto (S/)": np.random.uniform(10, 4000, n_samples),
-            "Distancia (km)": np.random.uniform(0, 60, n_samples),
+            "Monto (S/)": np.random.exponential(scale=500, size=n_samples) + 10,
+            "Distancia (km)": np.random.exponential(scale=15, size=n_samples),
             "Estado": np.random.choice(
                 ["Aprobada", "Bloqueada (Fraude)", "Alerta (Revisión)"], 
                 n_samples, 
-                p=[0.75, 0.15, 0.10]
+                p=[0.80, 0.12, 0.08]
             )
         })
         fig_scat = px.scatter(
@@ -120,9 +121,9 @@ elif vista == "🗺️ Análisis Geoespacial & Regiones":
     # Generar data sintética regional
     data_regiones = []
     for prov in PROVINCIAS:
-        txs = np.random.randint(500, 3500)
-        fraudes = np.random.randint(10, 120)
-        monto = np.random.uniform(150000, 1800000)
+        txs = np.random.randint(1500, 8500)
+        fraudes = np.random.randint(30, 320)
+        monto = np.random.uniform(500000, 4800000)
         data_regiones.append({
             "Provincia / Región": prov,
             "Transacciones Total": txs,
@@ -163,137 +164,76 @@ elif vista == "🗺️ Análisis Geoespacial & Regiones":
 
 
 # ======================================================================
-# VISTA 3: SIMULADOR DE FLUJO TRANSACCIONAL EN TIEMPO REAL
+# VISTA 3: SIMULADOR INTERACTIVO DE FRAUDE (EVALUACIÓN MANUAL)
 # ======================================================================
-elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
-    st.title("⚡ Simulador de Flujo Transaccional en Tiempo Real")
-    st.caption("Monitoreo continuo estilo SOC/Fintech con evaluación dinámica por regiones y reglas de decisión.")
+elif vista == "🔎 Evaluador Simulación de Fraude (Individual)":
+    st.title("🔎 Evaluador y Simulador de Operaciones de Fraude")
+    st.caption("Ingrese los parámetros de una transacción puntual para evaluar el score de riesgo en tiempo real.")
 
-    # --- CONTROLES DE SIMULACIÓN Y SELECCIÓN REGIONAL ---
-    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 2, 1])
-    
-    with ctrl_col1:
-        region_sel = st.selectbox(
-            "📍 Seleccionar Provincia / Región:",
-            ["Todas las Regiones"] + PROVINCIAS
-        )
-    
-    with ctrl_col2:
-        perfil_sim = st.selectbox(
-            "🛡️ Escenario de Tráfico:",
-            ["Operación Normal (Bajo Riesgo)", "Simulación de Ataque Masivo", "Modo Alta Seguridad"]
-        )
+    col_form, col_res = st.columns([1.2, 1])
+
+    with col_form:
+        st.subheader("📋 Datos de la Transacción a Simular")
         
-    with ctrl_col3:
-        velocidad = st.slider("⚡ Velocidad (s):", 0.1, 2.0, 0.8, step=0.1)
+        with st.form("form_fraude"):
+            f_banco = st.selectbox("🏦 Banco Origen:", BANCOS)
+            f_metodo = st.selectbox("💳 Método de Pago:", METODOS)
+            f_provincia = st.selectbox("📍 Ubicación / Provincia de la TX:", PROVINCIAS)
+            
+            f_monto = st.number_input("💰 Monto de la Transacción (S/):", min_value=1.0, max_value=50000.0, value=250.0, step=50.0)
+            f_distancia = st.slider("📏 Distancia respecto al Domicilio (km):", 0.0, 500.0, 5.0)
+            f_hora = st.time_input("⏰ Hora de Intento de Operación:")
+            f_intento_fallido = st.slider("⚠️ Intentos de Contraseña/OTP Fallidos Previos:", 0, 5, 0)
+            
+            btn_evaluar = st.form_submit_button("⚡ EVALUAR TRANSACCIÓN (ANALIZAR RIESGO)")
 
-    st.markdown("---")
+    with col_res:
+        st.subheader("📊 Diagnóstico del Modelo de Inteligencia Artificial")
+        
+        if btn_evaluar:
+            # Lógica de cálculo de score de riesgo sintético
+            score_riesgo = 0.05
+            
+            if f_monto > 2500:
+                score_riesgo += 0.35
+            elif f_monto > 800:
+                score_riesgo += 0.15
+                
+            if f_distancia > 100:
+                score_riesgo += 0.30
+            elif f_distancia > 30:
+                score_riesgo += 0.15
+                
+            if f_intento_fallido >= 2:
+                score_riesgo += 0.30
+                
+            hora_num = f_hora.hour
+            if 0 <= hora_num <= 5: # Madrugada aumenta riesgo
+                score_riesgo += 0.20
+                
+            score_final = min(round(score_riesgo * 100, 1), 99.9)
 
-    # Botones de Control
-    c_btn1, c_btn2, _ = st.columns([1.5, 1.5, 3])
-    with c_btn1:
-        run_stream = st.checkbox("🔴 Iniciar Streaming", value=False)
-    with c_btn2:
-        if st.button("🗑️ Limpiar Historial Log"):
-            st.session_state["stream_data"] = []
-            st.rerun()
+            # Mostrar resultado según el Score
+            st.markdown(f"### Score de Riesgo Calculado: **{score_final}%**")
+            st.progress(int(score_final))
 
-    # Memoria de sesión
-    if "stream_data" not in st.session_state:
-        st.session_state["stream_data"] = []
-
-    # --- BUCLE DE GENERACIÓN DE DATOS VARIADOS ---
-    if run_stream:
-        # 1. Asignación de Región/Provincia
-        if region_sel != "Todas las Regiones":
-            prov_final = region_sel
+            if score_final >= 65.0:
+                st.error("🚨 **RESULTADO: TRANSACCIÓN BLOQUEADA POR ALTO RIESGO DE FRAUDE**")
+                st.warning("""
+                **Factores de Alerta Detectados:**
+                * Monto o localización fuera del patrón habitual del cliente.
+                * Anomalía de horario/intentos fallidos en el acceso.
+                * **Acción ejecutada:** Transacción rechazada y cuenta en congelamiento preventivo.
+                """)
+            elif score_final >= 35.0:
+                st.warning("🟡 **RESULTADO: REQUIERE VERIFICACIÓN ADICIONAL (MFA)**")
+                st.info("""
+                **Factores de Alerta Detectados:**
+                * Riesgo moderado detectado.
+                * **Acción ejecutada:** Se ha enviado un código OTP al celular registrado y solicitud de biometría facial.
+                """)
+            else:
+                st.success("🟢 **RESULTADO: TRANSACCIÓN APROBADA (OPERACIÓN LEGÍTIMA)**")
+                st.caption("Los parámetros coinciden con el perfil histórico del usuario.")
         else:
-            prov_final = str(np.random.choice(PROVINCIAS))
-        
-        # 2. Selección de Método y Banco
-        metodo_final = str(np.random.choice(METODOS))
-        banco_final = str(np.random.choice(BANCOS))
-
-        # 3. Variabilidad Realista de Montos y Distancias
-        monto_rand = round(float(np.random.choice([25.50, 85.00, 240.00, 890.00, 3200.00, 9500.00], p=[0.35, 0.30, 0.20, 0.08, 0.05, 0.02])), 2)
-        distancia_rand = round(float(np.random.uniform(0.5, 150.0)), 1)
-
-        # 4. Probabilidades de Estado según el escenario seleccionado
-        if perfil_sim == "Operación Normal (Bajo Riesgo)":
-            p_dist = [0.75, 0.12, 0.08, 0.05] # 75% Aprobada, 12% OTP, 8% SOC, 5% Bloqueo
-        elif perfil_sim == "Simulación de Ataque Masivo":
-            p_dist = [0.30, 0.20, 0.20, 0.30] # 30% Aprobada, 20% OTP, 20% SOC, 30% Bloqueo
-        else: # Modo Alta Seguridad
-            p_dist = [0.55, 0.20, 0.10, 0.15]
-
-        # Estados Versátiles
-        estados_posibles = [
-            "🟢 APROBADA", 
-            "🟡 REQUIERE OTP / FACIAL", 
-            "🟠 EN INVESTIGACIÓN (SOC)", 
-            "🔴 BLOQUEADA / FRAUDE"
-        ]
-        
-        estado_eval = str(np.random.choice(estados_posibles, p=p_dist))
-
-        # Registrar la nueva transacción
-        nueva_tx = {
-            "Hora": pd.Timestamp.now().strftime("%H:%M:%S"),
-            "ID": f"TX-{np.random.randint(100000, 999999)}",
-            "Estado": estado_eval,
-            "Monto (S/)": monto_rand,
-            "Distancia (km)": distancia_rand,
-            "Método": metodo_final,
-            "Banco": banco_final,
-            "Provincia": prov_final
-        }
-
-        st.session_state["stream_data"].insert(0, nueva_tx)
-        
-        # Mantener solo los últimos 50 registros en memoria
-        if len(st.session_state["stream_data"]) > 50:
-            st.session_state["stream_data"].pop()
-
-    # --- DATAFRAME Y MÉTRICAS EN TIEMPO REAL ---
-    df_stream = pd.DataFrame(st.session_state["stream_data"])
-
-    if not df_stream.empty:
-        total_txs = len(df_stream)
-        monto_total = df_stream["Monto (S/)"].sum()
-        
-        df_bloq = df_stream[df_stream["Estado"] == "🔴 BLOQUEADA / FRAUDE"]
-        df_alertas = df_stream[df_stream["Estado"].isin(["🟡 REQUIERE OTP / FACIAL", "🟠 EN INVESTIGACIÓN (SOC)"])]
-        
-        casos_bloqueados = len(df_bloq)
-        casos_alertas = len(df_alertas)
-        monto_salvado = df_bloq["Monto (S/)"].sum()
-    else:
-        total_txs, monto_total, casos_bloqueados, casos_alertas, monto_salvado = 0, 0.0, 0, 0, 0.0
-
-    # Panel de Métricas (KPIs)
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Transacciones Evaluadas", f"{total_txs} txs", f"Filtro: {region_sel}")
-    k2.metric("Monto Procesado", f"S/ {monto_total:,.2f}")
-    k3.metric("Fraudes Bloqueados", f"{casos_bloqueados} casos", delta=f"{casos_alertas} Alertas/Investigación", delta_color="inverse")
-    k4.metric("Monto Salvaguardado", f"S/ {monto_salvado:,.2f}")
-
-    st.markdown("---")
-    st.subheader(f"📜 Feed Transaccional Registrado — {region_sel}")
-
-    if not df_stream.empty:
-        st.dataframe(
-            df_stream,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Monto (S/)": st.column_config.NumberColumn(format="S/ %.2f"),
-                "Distancia (km)": st.column_config.NumberColumn(format="%.1f km")
-            }
-        )
-    else:
-        st.info("💡 Haz clic en el interruptor **'🔴 Iniciar Streaming'** para comenzar la simulación en tiempo real.")
-
-    # Bucle de refresco continuo
-    if run_stream:
-        time.sleep(velocidad)
-        st.rerun()
+            st.info("👈 Ingresa los datos en el formulario de la izquierda y presiona **'EVALUAR TRANSACCIÓN'** para obtener el resultado.")
