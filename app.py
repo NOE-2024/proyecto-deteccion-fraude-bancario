@@ -44,7 +44,6 @@ def cargar_modelo():
         "yape_plin_alto": np.random.choice([0, 1], n),
         "fin_de_semana": np.random.choice([0, 1], n),
     })
-    # Generar etiqueta ficticia orientada a riesgo
     y = ((df_train["monto"] > 1000) & (df_train["es_madrugada"] == 1) | (df_train["distancia_km_home"] > 30)).astype(int)
     rf = RandomForestClassifier(n_estimators=50, random_state=42)
     rf.fit(df_train[FEATURES], y)
@@ -66,33 +65,73 @@ st.sidebar.caption("🔒 Versión del Core: 3.4.1")
 st.sidebar.caption("⚡ SLA de Latencia: < 25 ms")
 
 # ======================================================================
-# VISTA 1: DASHBOARD GENERAL
+# VISTA 1: DASHBOARD GENERAL (AHORA TOTALMENTE DINÁMICO)
 # ======================================================================
 if vista == "📊 Dashboard General de Riesgos":
     st.title("📊 Dashboard General de Riesgos y Fraude Bancario")
-    st.caption("Visión ejecutiva del comportamiento de transacciones a nivel nacional.")
+    st.caption("Visión ejecutiva del comportamiento de transacciones a nivel nacional con controles dinámicos.")
     
+    # --- FILTROS DINÁMICOS ---
+    f_col1, f_col2, f_col3 = st.columns(3)
+    with f_col1:
+        periodo = st.selectbox("📅 Período Evaluado:", ["Hoy", "Últimos 7 días", "Este Mes", "Año 2026"])
+    with f_col2:
+        banco_sel = st.selectbox("🏦 Entidad Bancaria:", ["Todas las Entidades"] + BANCOS)
+    with f_col3:
+        canal_sel = st.selectbox("💳 Canal de Pago:", ["Todos los Canales"] + METODOS)
+
+    # Generación/Cálculo dinámico basado en filtros
+    multiplicador = {"Hoy": 1, "Últimos 7 días": 7, "Este Mes": 30, "Año 2026": 200}[periodo]
+    if banco_sel != "Todas las Entidades":
+        multiplicador *= 0.25
+    if canal_sel != "Todos los Canales":
+        multiplicador *= 0.2
+
+    base_tx = int(41529 * multiplicador)
+    monto_salvado = float(150670 * multiplicador)
+    efectividad = round(99.2 + (np.random.rand() * 0.5 - 0.25), 2)
+    falsos_pos = round(0.8 + (np.random.rand() * 0.2 - 0.1), 2)
+
+    st.markdown("---")
+    
+    # Métricas dinámicas
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Transacciones Evaluadas", "1,245,890", "+12% este mes")
-    col2.metric("Índice de Fraude Detenido", "99.2%", "+0.4%")
-    col3.metric("Monto Salvaguardado", "S/ 4,520,100", "S/ 120,500 hoy")
-    col4.metric("Falsos Positivos", "0.8%", "-0.1%")
+    col1.metric("Transacciones Evaluadas", f"{base_tx:,}", "+12% vs periodo anterior")
+    col2.metric("Índice de Fraude Detenido", f"{efectividad}%", "+0.4%")
+    col3.metric("Monto Salvaguardado", f"S/ {monto_salvado:,.2f}", "Actualizado al instante")
+    col4.metric("Falsos Positivos", f"{falsos_pos}%", "-0.1%")
     
     st.markdown("---")
     c_left, c_right = st.columns(2)
+    
     with c_left:
         st.subheader("Distribución de Transacciones por Canal")
-        df_canal = pd.DataFrame({"Método": METODOS, "Volumen": [450000, 320000, 210000, 150000, 80000, 35890]})
+        
+        # Filtrado dinámico del gráfico de torta
+        if canal_sel == "Todos los Canales":
+            df_canal = pd.DataFrame({"Método": METODOS, "Volumen": np.random.randint(10000, 100000, len(METODOS))})
+        else:
+            df_canal = pd.DataFrame({"Método": [canal_sel, "Otros Canales"], "Volumen": [int(base_tx * 0.7), int(base_tx * 0.3)]})
+            
         fig_canal = px.pie(df_canal, names="Método", values="Volumen", hole=0.4, color_discrete_sequence=px.colors.qualitative.Set2)
         st.plotly_chart(fig_canal, use_container_width=True)
+
     with c_right:
         st.subheader("Relación Monto vs Distancia de Domicilio")
+        
+        n_samples = min(200, max(30, int(base_tx / 100)))
         df_scatter = pd.DataFrame({
-            "Monto": np.random.uniform(10, 3000, 200),
-            "Distancia_km": np.random.uniform(0, 50, 200),
-            "Fraude": np.random.choice(["Normal", "Sospechoso"], 200, p=[0.85, 0.15])
+            "Monto (S/)": np.random.uniform(10, 4000, n_samples),
+            "Distancia (km)": np.random.uniform(0, 60, n_samples),
+            "Estado": np.random.choice(["Aprobada", "Sospechosa / Fraude"], n_samples, p=[0.88, 0.12])
         })
-        fig_scat = px.scatter(df_scatter, x="Distancia_km", y="Monto", color="Fraude", color_discrete_map={"Normal": "#2ECC71", "Sospechoso": "#E74C3C"})
+        fig_scat = px.scatter(
+            df_scatter, 
+            x="Distancia (km)", 
+            y="Monto (S/)", 
+            color="Estado", 
+            color_discrete_map={"Aprobada": "#2ECC71", "Sospechosa / Fraude": "#E74C3C"}
+        )
         st.plotly_chart(fig_scat, use_container_width=True)
 
 # ======================================================================
@@ -102,15 +141,60 @@ elif vista == "🗺️ Mapa Estadístico por Provincias":
     st.title("🗺️ Mapa Estadístico de Fraude por Provincias")
     st.caption("Concentración territorial del riesgo transaccional en el Perú.")
     
+    np.random.seed(123)
     df_prov = pd.DataFrame({
         "Provincia": PROVINCIAS,
         "Transacciones": np.random.randint(10000, 500000, len(PROVINCIAS)),
         "Nivel_Riesgo": np.random.choice(["Bajo", "Medio", "Alto", "Crítico"], len(PROVINCIAS), p=[0.4, 0.3, 0.2, 0.1])
     })
+
+    c_filt1, c_filt2, c_descarga = st.columns([2, 2, 1.5])
     
-    st.dataframe(df_prov, use_container_width=True, hide_index=True)
-    fig_bar = px.bar(df_prov, x="Provincia", y="Transacciones", color="Nivel_Riesgo", title="Volumen Operativo por Provincia")
-    st.plotly_chart(fig_bar, use_container_width=True)
+    with c_filt1:
+        filtro_riesgo = st.selectbox(
+            "🎯 Filtrar por Nivel de Riesgo:",
+            ["Todos", "Crítico", "Alto", "Medio", "Bajo"]
+        )
+
+    with c_filt2:
+        modo_vista = st.radio(
+            "👁️ Selecciona Modo de Vista:",
+            ["📋 Tabla Detallada", "📊 Gráfico de Barras"],
+            horizontal=True
+        )
+
+    with c_descarga:
+        st.write(" ")
+        csv_data = df_prov.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar CSV",
+            data=csv_data,
+            file_name="reporte_fraude_provincias.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+    if filtro_riesgo != "Todos":
+        df_filtrado = df_prov[df_prov["Nivel_Riesgo"] == filtro_riesgo]
+    else:
+        df_filtrado = df_prov
+
+    st.markdown("---")
+
+    if "Tabla" in modo_vista:
+        st.subheader(f"Detalle de Provincias ({len(df_filtrado)} encontradas)")
+        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+    else:
+        st.subheader("Volumen Operativo por Provincia")
+        fig_bar = px.bar(
+            df_filtrado, 
+            x="Provincia", 
+            y="Transacciones", 
+            color="Nivel_Riesgo", 
+            color_discrete_map={"Bajo": "#2ECC71", "Medio": "#F39C12", "Alto": "#E67E22", "Crítico": "#E74C3C"},
+            title="Transacciones Filtradas por Provincia"
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
 
 # ======================================================================
 # VISTA 3: EVALUADOR EN TIEMPO REAL Y SIMULADOR
@@ -245,7 +329,7 @@ else:
         st.progress(float(prob))
 
     # ----------------------------------------------------------------------
-    # SIMULADOR DE FLUJO TRANSACCIONAL EN TIEMPO REAL (ÚNICO BLOQUE)
+    # SIMULADOR DE FLUJO TRANSACCIONAL EN TIEMPO REAL
     # ----------------------------------------------------------------------
     st.markdown("---")
     st.subheader("⚡ Simulador de Flujo Transaccional en Tiempo Real")
