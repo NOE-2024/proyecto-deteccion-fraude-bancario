@@ -268,21 +268,21 @@ elif vista == "🗺️ Mapa Estadístico por Provincias":
 # ======================================================================
 elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
     st.title("⚡ Simulador de Flujo Transaccional en Tiempo Real")
-    st.caption("Monitoreo continuo estilo SOC/Fintech con evaluación de métricas al vuelo y selección regional.")
+    st.caption("Monitoreo continuo estilo SOC/Fintech con evaluación dinámica por regiones y reglas de decisión.")
 
-    # --- CONTROLES DE SIMULACIÓN Y REGIONALIZACIÓN ---
-    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1.5, 1.5, 1])
+    # --- CONTROLES DE SIMULACIÓN Y SELECCIÓN REGIONAL ---
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 2, 1])
     
     with ctrl_col1:
         region_sel = st.selectbox(
-            "📍 Seleccionar Provincia / Región Focal:",
+            "📍 Seleccionar Provincia / Región:",
             ["Todas las Regiones"] + PROVINCIAS
         )
     
     with ctrl_col2:
         perfil_sim = st.selectbox(
-            "🛡️ Perfil de Tráfico Simulado:",
-            ["Operación Normal (Bajo Riesgo)", "Ataque Masivo (Alerta SOC)", "Modo Estricto (Seguridad Alta)"]
+            "🛡️ Escenario de Tráfico:",
+            ["Operación Normal (Mixto)", "Simulación de Ataque Masivo", "Modo Alta Seguridad"]
         )
         
     with ctrl_col3:
@@ -290,7 +290,7 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
 
     st.markdown("---")
 
-    # Botones de Acción
+    # Botones de Control
     c_btn1, c_btn2, _ = st.columns([1.5, 1.5, 3])
     with c_btn1:
         run_stream = st.checkbox("🔴 Iniciar Streaming", value=False)
@@ -299,56 +299,63 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
             st.session_state["stream_data"] = []
             st.rerun()
 
-    # Inicializar estado en sesión
+    # Memoria de sesión
     if "stream_data" not in st.session_state:
         st.session_state["stream_data"] = []
 
-    # BUCLE DE SIMULACIÓN DINÁMICO
+    # --- BUCLE DE GENERACIÓN DE DATOS VARIADOS ---
     if run_stream:
-        # 1. Determinación de Provincia
-        provincia_final = region_sel if region_sel != "Todas las Regiones" else np.random.choice(PROVINCIAS)
+        # 1. Asignación de Región/Provincia
+        prov_final = region_sel if region_sel != "Todas las Regiones" else random.choice(PROVINCIAS) if 'random' in globals() else np.random.choice(PROVINCIAS)
         
-        # 2. Generación dinámica de monto y distancia
-        monto_rand = round(float(np.random.exponential(scale=350) + 15), 2)
-        distancia_rand = round(float(np.random.exponential(scale=10)), 1)
+        # 2. Asignación Aleatoria de Método y Banco
+        metodos_lista = ["Tarjeta de Débito", "Tarjeta de Crédito", "Transferencia CCI", "Yape / Plin", "Banca por Internet"]
+        bancos_lista = ["BCP", "BBVA", "Interbank", "Scotiabank", "BanBif"]
         
-        # Ocacionalmente simular picos/anomalías de alto valor
-        if np.random.rand() < 0.05:
-            monto_rand = round(float(np.random.uniform(2500, 12000)), 2)
-            distancia_rand = round(float(np.random.uniform(50, 450)), 1)
+        metodo_final = str(np.random.choice(metodos_lista))
+        banco_final = str(np.random.choice(bancos_lista))
 
-        # 3. Definición de probabilidades según el perfil seleccionado
-        if perfil_sim == "Operación Normal (Bajo Riesgo)":
-            p_aprobada, p_mfa, p_bloqueo = 0.90, 0.07, 0.03
-        elif perfil_sim == "Ataque Masivo (Alerta SOC)":
-            p_aprobada, p_mfa, p_bloqueo = 0.45, 0.25, 0.30
-        else: # Modo Estricto
-            p_aprobada, p_mfa, p_bloqueo = 0.65, 0.20, 0.15
+        # 3. Variabilidad Realista de Montos y Distancias
+        monto_rand = round(float(np.random.choice([45.50, 120.00, 350.00, 1250.00, 4800.00, 11500.00], p=[0.35, 0.30, 0.20, 0.08, 0.05, 0.02])), 2)
+        distancia_rand = round(float(np.random.uniform(0.5, 120.0)), 1)
 
-        # Asignación del estado
-        estado_eval = np.random.choice(
-            ["🟢 APROBADA", "🟡 REQUIERE OTP / FACIAL", "🔴 BLOQUEADA / FRAUDE"],
-            p=[p_aprobada, p_mfa, p_bloqueo]
-        )
+        # 4. Asignación de Probabilidades de Estado según Escenario
+        if perfil_sim == "Operación Normal (Mixto)":
+            p_dist = [0.70, 0.12, 0.10, 0.08] # 70% Aprobada, 12% OTP, 10% Investigación, 8% Bloqueo
+        elif perfil_sim == "Simulación de Ataque Masivo":
+            p_dist = [0.30, 0.20, 0.20, 0.30] # 30% Aprobada, 20% OTP, 20% Investigación, 30% Bloqueo
+        else: # Modo Alta Seguridad
+            p_dist = [0.50, 0.25, 0.10, 0.15]
 
+        # Estados Versátiles
+        estados_posibles = [
+            "🟢 APROBADA", 
+            "🟡 REQUIERE OTP / FACIAL", 
+            "🟠 EN INVESTIGACIÓN (SOC)", 
+            "🔴 BLOQUEADA / FRAUDE"
+        ]
+        
+        estado_eval = str(np.random.choice(estados_posibles, p=p_dist))
+
+        # Registrar la nueva transacción
         nueva_tx = {
             "Hora": pd.Timestamp.now().strftime("%H:%M:%S"),
             "ID": f"TX-{np.random.randint(100000, 999999)}",
             "Estado": estado_eval,
             "Monto (S/)": monto_rand,
             "Distancia (km)": distancia_rand,
-            "Método": np.random.choice(METODOS),
-            "Banco": np.random.choice(BANCOS),
-            "Provincia": provincia_final
+            "Método": metodo_final,
+            "Banco": banco_final,
+            "Provincia": prov_final
         }
 
         st.session_state["stream_data"].insert(0, nueva_tx)
         
-        # Mantener un máximo de 50 registros en pantalla
+        # Mantener solo los últimos 50 registros
         if len(st.session_state["stream_data"]) > 50:
             st.session_state["stream_data"].pop()
 
-    # DATAFRAME Y MÉTRICAS
+    # --- DATAFRAME Y MÉTRICAS EN TIEMPO REAL ---
     df_stream = pd.DataFrame(st.session_state["stream_data"])
 
     if not df_stream.empty:
@@ -356,23 +363,23 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
         monto_total = df_stream["Monto (S/)"].sum()
         
         df_bloq = df_stream[df_stream["Estado"] == "🔴 BLOQUEADA / FRAUDE"]
-        df_mfa = df_stream[df_stream["Estado"] == "🟡 REQUIERE OTP / FACIAL"]
+        df_alertas = df_stream[df_stream["Estado"].isin(["🟡 REQUIERE OTP / FACIAL", "🟠 EN INVESTIGACIÓN (SOC)"])]
         
         casos_bloqueados = len(df_bloq)
-        casos_mfa = len(df_mfa)
+        casos_alertas = len(df_alertas)
         monto_salvado = df_bloq["Monto (S/)"].sum()
     else:
-        total_txs, monto_total, casos_bloqueados, casos_mfa, monto_salvado = 0, 0.0, 0, 0, 0.0
+        total_txs, monto_total, casos_bloqueados, casos_alertas, monto_salvado = 0, 0.0, 0, 0, 0.0
 
-    # KPIs Principales
+    # Panel de Métricas (KPIs)
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Transacciones Evaluadas", f"{total_txs} txs", f"Región: {region_sel}")
+    k1.metric("Transacciones Evaluadas", f"{total_txs} txs", f"Filtro: {region_sel}")
     k2.metric("Monto Procesado", f"S/ {monto_total:,.2f}")
-    k3.metric("Fraudes Bloqueados", f"{casos_bloqueados} casos", delta=f"{casos_mfa} en Alerta MFA", delta_color="inverse")
+    k3.metric("Fraudes Bloqueados", f"{casos_bloqueados} casos", delta=f"{casos_alertas} Alertas/Investigación", delta_color="inverse")
     k4.metric("Monto Salvaguardado", f"S/ {monto_salvado:,.2f}")
 
     st.markdown("---")
-    st.subheader(f"📜 Feed Transaccional Registrado - {region_sel}")
+    st.subheader(f"📜 Feed Transaccional Registrado — {region_sel}")
 
     if not df_stream.empty:
         st.dataframe(
@@ -385,9 +392,9 @@ elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
             }
         )
     else:
-        st.info("💡 Selecciona una región, define el perfil de tráfico y marca **'🔴 Iniciar Streaming'** para comenzar la simulación.")
+        st.info("💡 Haz clic en el interruptor **'🔴 Iniciar Streaming'** para comenzar la simulación en tiempo real.")
 
-    # Bucle de actualización automática
+    # Bucle de refresco continuo
     if run_stream:
         import time
         time.sleep(velocidad)
