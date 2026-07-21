@@ -119,35 +119,63 @@ if vista == "📊 Dashboard General de Riesgos":
     with c_right:
         st.subheader("Relación Monto vs Distancia de Domicilio")
         
-        n_samples = min(200, max(30, int(base_tx / 100)))
+       n_samples = min(200, max(30, int(base_tx / 100)))
         df_scatter = pd.DataFrame({
             "Monto (S/)": np.random.uniform(10, 4000, n_samples),
             "Distancia (km)": np.random.uniform(0, 60, n_samples),
-            "Estado": np.random.choice(["Aprobada", "Sospechosa / Fraude"], n_samples, p=[0.88, 0.12])
+            # Cambiamos p=[0.88, 0.12] a 3 estados con mayor visibilidad de fraude y alertas
+            "Estado": np.random.choice(
+                ["Aprobada", "Bloqueada (Fraude)", "Alerta (Revisión)"], 
+                n_samples, 
+                p=[0.75, 0.15, 0.10]  # 75% Aprobadas, 15% Bloqueadas, 10% Alertas
+            )
         })
         fig_scat = px.scatter(
             df_scatter, 
             x="Distancia (km)", 
             y="Monto (S/)", 
             color="Estado", 
-            color_discrete_map={"Aprobada": "#2ECC71", "Sospechosa / Fraude": "#E74C3C"}
+            # Mapeo de colores para cada estado (Verde, Rojo, Amarillo)
+            color_discrete_map={
+                "Aprobada": "#2ECC71", 
+                "Bloqueada (Fraude)": "#E74C3C",
+                "Alerta (Revisión)": "#F1C40F"
+            }
         )
-        st.plotly_chart(fig_scat, use_container_width=True)
 
 # ======================================================================
 # VISTA 2: MAPA POR PROVINCIAS
 # ======================================================================
 elif vista == "🗺️ Mapa Estadístico por Provincias":
     st.title("🗺️ Mapa Estadístico de Fraude por Provincias")
-    st.caption("Concentración territorial del riesgo transaccional en el Perú.")
+    st.caption("Concentración territorial del riesgo transaccional en el Perú y tasa de rechazos.")
     
+    # Generación de datos con métricas de aprobación y rechazo
     np.random.seed(123)
+    
+    # Cálculo de métricas realistas según nivel de riesgo
+    riesgos = np.random.choice(["Bajo", "Medio", "Alto", "Crítico"], len(PROVINCIAS), p=[0.35, 0.30, 0.20, 0.15])
+    transacciones = np.random.randint(15000, 450000, len(PROVINCIAS))
+    
+    # Porcentajes de rechazo según riesgo
+    pct_rechazo_map = {"Bajo": 0.02, "Medio": 0.08, "Alto": 0.18, "Crítico": 0.35}
+    pct_alerta_map = {"Bajo": 0.05, "Medio": 0.12, "Alto": 0.22, "Crítico": 0.25}
+    
+    rechazadas = [int(t * pct_rechazo_map[r]) for t, r in zip(transacciones, riesgos)]
+    alertas = [int(t * pct_alerta_map[r]) for t, r in zip(transacciones, riesgos)]
+    aprobadas = [t - rec - alt for t, rec, alt in zip(transacciones, rechazadas, alertas)]
+    
     df_prov = pd.DataFrame({
         "Provincia": PROVINCIAS,
-        "Transacciones": np.random.randint(10000, 500000, len(PROVINCIAS)),
-        "Nivel_Riesgo": np.random.choice(["Bajo", "Medio", "Alto", "Crítico"], len(PROVINCIAS), p=[0.4, 0.3, 0.2, 0.1])
+        "Nivel_Riesgo": riesgos,
+        "Transacciones Totales": transacciones,
+        "🟢 Aprobadas": aprobadas,
+        "🟡 En Alerta": alertas,
+        "🔴 Bloqueadas (Fraude)": rechazadas,
+        "% Rechazo": [round((rec / t) * 100, 2) for rec, t in zip(rechazadas, transacciones)]
     })
 
+    # --- FILTROS Y CONTROLES ---
     c_filt1, c_filt2, c_descarga = st.columns([2, 2, 1.5])
     
     with c_filt1:
@@ -174,159 +202,196 @@ elif vista == "🗺️ Mapa Estadístico por Provincias":
             use_container_width=True
         )
 
+    # Filtrado dinámico
     if filtro_riesgo != "Todos":
         df_filtrado = df_prov[df_prov["Nivel_Riesgo"] == filtro_riesgo]
     else:
         df_filtrado = df_prov
 
+    # KPI Summary Cards
+    m1, m2, m3, m4 = st.columns(4)
+    total_tx_sel = df_filtrado["Transacciones Totales"].sum()
+    total_bloq_sel = df_filtrado["🔴 Bloqueadas (Fraude)"].sum()
+    total_alt_sel = df_filtrado["🟡 En Alerta"].sum()
+    tasa_bloqueo_prom = round((total_bloq_sel / total_tx_sel * 100), 2) if total_tx_sel > 0 else 0
+
+    m1.metric("Provincias Mostradas", len(df_filtrado))
+    m2.metric("Transacciones Evaluadas", f"{total_tx_sel:,}")
+    m3.metric("Total Bloqueadas", f"{total_bloq_sel:,}", delta=f"{tasa_bloqueo_prom}% Tasa Global", delta_color="inverse")
+    m4.metric("En Alerta (MFA)", f"{total_alt_sel:,}")
+
     st.markdown("---")
 
+    # VISTA TABLA O GRÁFICO
     if "Tabla" in modo_vista:
-        st.subheader(f"Detalle de Provincias ({len(df_filtrado)} encontradas)")
-        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
-    else:
-        st.subheader("Volumen Operativo por Provincia")
-        fig_bar = px.bar(
+        st.subheader(f"📋 Detalle por Provincia ({len(df_filtrado)} encontradas)")
+        st.dataframe(
             df_filtrado, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "% Rechazo": st.column_config.NumberColumn(format="%.2f %%"),
+                "Transacciones Totales": st.column_config.NumberColumn(format="%d"),
+                "🟢 Aprobadas": st.column_config.NumberColumn(format="%d"),
+                "🟡 En Alerta": st.column_config.NumberColumn(format="%d"),
+                "🔴 Bloqueadas (Fraude)": st.column_config.NumberColumn(format="%d")
+            }
+        )
+    else:
+        st.subheader("📊 Comparativo de Transacciones Bloqueadas vs Aprobadas por Provincia")
+        
+        # Preparar datos desglosados para el gráfico de barras acumuladas
+        df_melted = df_filtrado.melt(
+            id_vars=["Provincia", "Nivel_Riesgo"], 
+            value_vars=["🟢 Aprobadas", "🟡 En Alerta", "🔴 Bloqueadas (Fraude)"],
+            var_name="Estado_Transaccion", 
+            value_name="Cantidad"
+        )
+        
+        fig_bar = px.bar(
+            df_melted, 
             x="Provincia", 
-            y="Transacciones", 
-            color="Nivel_Riesgo", 
-            color_discrete_map={"Bajo": "#2ECC71", "Medio": "#F39C12", "Alto": "#E67E22", "Crítico": "#E74C3C"},
-            title="Transacciones Filtradas por Provincia"
+            y="Cantidad", 
+            color="Estado_Transaccion", 
+            color_discrete_map={
+                "🟢 Aprobadas": "#2ECC71", 
+                "🟡 En Alerta": "#F1C40F", 
+                "🔴 Bloqueadas (Fraude)": "#E74C3C"
+            },
+            title="Distribución del Estado de Transacciones por Provincia",
+            labels={"Cantidad": "N° de Transacciones", "Provincia": "Provincia"}
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # ======================================================================
-# VISTA 3: EVALUADOR EN TIEMPO REAL Y SIMULADOR
+# VISTA 3: SIMULADOR DE FLUJO TRANSACCIONAL EN TIEMPO REAL
 # ======================================================================
-else:
-    st.title("🔎 Evaluador de Transacciones en Tiempo Real")
-    st.caption("Motor dinámico de inferencia en milisegundos para simulación de decisiones de riesgo.")
+elif vista == "🔎 Evaluador de Transacciones (En Vivo)":
+    st.title("⚡ Simulador de Flujo Transaccional en Tiempo Real")
+    st.caption("Monitoreo continuo estilo SOC/Fintech con evaluación de métricas al vuelo y selección regional.")
 
-    st.subheader("💳 Datos de la Transacción Entrante")
-
-    with st.form("form_evaluacion"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            monto = st.number_input("Monto de la Operación (S/.)", min_value=1.0, value=850.0, step=50.0)
-            metodo = st.selectbox("Método de Pago", METODOS)
-            banco = st.selectbox("Banco Origen", BANCOS)
-        with c2:
-            distancia = st.slider("Distancia desde Domicilio habitual (km)", 0.0, 100.0, 28.5)
-            hora = st.slider("Hora de la Transacción (0-23h)", 0, 23, 3)
-            categoria = st.selectbox("Categoría del Comercio", CATEGORIAS)
-        with c3:
-            provincia_eval = st.selectbox("Provincia de Operación", PROVINCIAS)
-            comercio_nuevo = st.checkbox("¿Primera vez en este comercio?", value=True)
-            dia_semana = st.selectbox("Día de la Semana", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"], index=5)
-            tx_recientes = st.slider("Transacciones en últimos 15 min", 1, 10, 4)
-
-        btn_evaluar = st.form_submit_button("🔍 Evaluar Riesgo de Transacción", type="primary", use_container_width=True)
-
-    if btn_evaluar:
-        start_time = time.time()
-        dia_idx = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"].index(dia_semana)
+    # --- CONTROLES DE SIMULACIÓN Y REGIONALIZACIÓN ---
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1.5, 1.5, 1])
+    
+    with ctrl_col1:
+        region_sel = st.selectbox(
+            "📍 Seleccionar Provincia / Región Focal:",
+            ["Todas las Regiones"] + PROVINCIAS
+        )
+    
+    with ctrl_col2:
+        perfil_sim = st.selectbox(
+            "🛡️ Perfil de Tráfico Simulado:",
+            ["Operación Normal (Bajo Riesgo)", "Ataque Masivo (Alerta SOC)", "Modo Estricto (Seguridad Alta)"]
+        )
         
-        fila = pd.DataFrame([{
-            "monto": monto,
-            "distancia_km_home": distancia,
-            "comercio_nuevo": int(comercio_nuevo),
-            "tx_ultimos_15min": tx_recientes,
-            "hora_dia": hora,
-            "dia_semana": dia_idx,
-            "es_madrugada": int(1 <= hora <= 5),
-            "yape_plin_alto": int(metodo in ["Yape", "Plin"] and monto > 400),
-            "fin_de_semana": int(dia_idx in [5, 6]),
-        }])[FEATURES]
+    with ctrl_col3:
+        velocidad = st.slider("⚡ Velocidad (s):", 0.1, 2.0, 0.8, step=0.1)
 
-        prob = model.predict_proba(fila)[0][1]
-        latency = (time.time() - start_time) * 1000
+    st.markdown("---")
 
-        st.session_state.ultima_evaluacion = {
-            "prob": prob,
-            "latency": latency,
-            "provincia": provincia_eval,
-            "hora": hora,
-            "metodo": metodo,
-            "monto": monto,
-            "distancia": distancia,
-            "tx_recientes": tx_recientes,
-            "categoria": categoria,
-            "comercio_nuevo": comercio_nuevo,
-            "dia_semana": dia_semana
+    # Botones de Acción
+    c_btn1, c_btn2, _ = st.columns([1.5, 1.5, 3])
+    with c_btn1:
+        run_stream = st.checkbox("🔴 Iniciar Streaming", value=False)
+    with c_btn2:
+        if st.button("🗑️ Limpiar Historial Log"):
+            st.session_state["stream_data"] = []
+            st.rerun()
+
+    # Inicializar estado en sesión
+    if "stream_data" not in st.session_state:
+        st.session_state["stream_data"] = []
+
+    # BUCLE DE SIMULACIÓN DINÁMICO
+    if run_stream:
+        # 1. Determinación de Provincia
+        provincia_final = region_sel if region_sel != "Todas las Regiones" else np.random.choice(PROVINCIAS)
+        
+        # 2. Generación dinámica de monto y distancia
+        monto_rand = round(float(np.random.exponential(scale=350) + 15), 2)
+        distancia_rand = round(float(np.random.exponential(scale=10)), 1)
+        
+        # Ocacionalmente simular picos/anomalías de alto valor
+        if np.random.rand() < 0.05:
+            monto_rand = round(float(np.random.uniform(2500, 12000)), 2)
+            distancia_rand = round(float(np.random.uniform(50, 450)), 1)
+
+        # 3. Definición de probabilidades según el perfil seleccionado
+        if perfil_sim == "Operación Normal (Bajo Riesgo)":
+            p_aprobada, p_mfa, p_bloqueo = 0.90, 0.07, 0.03
+        elif perfil_sim == "Ataque Masivo (Alerta SOC)":
+            p_aprobada, p_mfa, p_bloqueo = 0.45, 0.25, 0.30
+        else: # Modo Estricto
+            p_aprobada, p_mfa, p_bloqueo = 0.65, 0.20, 0.15
+
+        # Asignación del estado
+        estado_eval = np.random.choice(
+            ["🟢 APROBADA", "🟡 REQUIERE OTP / FACIAL", "🔴 BLOQUEADA / FRAUDE"],
+            p=[p_aprobada, p_mfa, p_bloqueo]
+        )
+
+        nueva_tx = {
+            "Hora": pd.Timestamp.now().strftime("%H:%M:%S"),
+            "ID": f"TX-{np.random.randint(100000, 999999)}",
+            "Estado": estado_eval,
+            "Monto (S/)": monto_rand,
+            "Distancia (km)": distancia_rand,
+            "Método": np.random.choice(METODOS),
+            "Banco": np.random.choice(BANCOS),
+            "Provincia": provincia_final
         }
 
-    if "ultima_evaluacion" in st.session_state:
-        ev = st.session_state.ultima_evaluacion
-        prob = ev["prob"]
+        st.session_state["stream_data"].insert(0, nueva_tx)
         
-        st.markdown("---")
-        st.subheader("🛡️ Dictamen del Motor de Seguridad")
+        # Mantener un máximo de 50 registros en pantalla
+        if len(st.session_state["stream_data"]) > 50:
+            st.session_state["stream_data"].pop()
 
-        if prob >= 0.65:
-            st.error(
-                f"🚨 **ACCIÓN BANCARIA: TRANSACCIÓN BLOQUEADA / RETENIDA**\n\n"
-                f"📍 **Ubicación:** Prov. {ev['provincia']} | "
-                f"Probabilidad de Fraude: **{prob*100:.1f}%** | "
-                f"Tiempo de Respuesta: `{ev['latency']:.2f} ms`"
-            )
-        elif 0.35 <= prob < 0.65:
-            st.warning(
-                f"🟡 **ACCIÓN BANCARIA: REQUIERE AUTENTICACIÓN REFORZADA (OTP / Facial)**\n\n"
-                f"📍 **Ubicación:** Prov. {ev['provincia']} | "
-                f"Probabilidad de Riesgo Moderado: **{prob*100:.1f}%** | "
-                f"Latencia: `{ev['latency']:.2f} ms`"
-            )
-        else:
-            st.success(
-                f"✅ **ACCIÓN BANCARIA: TRANSACCIÓN APROBADA**\n\n"
-                f"📍 **Ubicación:** Prov. {ev['provincia']} | "
-                f"Nivel de Riesgo Seguro: **{prob*100:.1f}%** | "
-                f"Latencia: `{ev['latency']:.2f} ms`"
-            )
+    # DATAFRAME Y MÉTRICAS
+    df_stream = pd.DataFrame(st.session_state["stream_data"])
 
-        st.markdown("#### 🔍 Factores de Riesgo Detectados:")
-        factores_hallados = False
+    if not df_stream.empty:
+        total_txs = len(df_stream)
+        monto_total = df_stream["Monto (S/)"].sum()
+        
+        df_bloq = df_stream[df_stream["Estado"] == "🔴 BLOQUEADA / FRAUDE"]
+        df_mfa = df_stream[df_stream["Estado"] == "🟡 REQUIERE OTP / FACIAL"]
+        
+        casos_bloqueados = len(df_bloq)
+        casos_mfa = len(df_mfa)
+        monto_salvado = df_bloq["Monto (S/)"].sum()
+    else:
+        total_txs, monto_total, casos_bloqueados, casos_mfa, monto_salvado = 0, 0.0, 0, 0, 0.0
 
-        if 1 <= ev["hora"] <= 5:
-            st.write("• ⚠️ **Horario Atípico:** Operación realizada en horario nocturno/madrugada (1 AM - 5 AM).")
-            factores_hallados = True
+    # KPIs Principales
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Transacciones Evaluadas", f"{total_txs} txs", f"Región: {region_sel}")
+    k2.metric("Monto Procesado", f"S/ {monto_total:,.2f}")
+    k3.metric("Fraudes Bloqueados", f"{casos_bloqueados} casos", delta=f"{casos_mfa} en Alerta MFA", delta_color="inverse")
+    k4.metric("Monto Salvaguardado", f"S/ {monto_salvado:,.2f}")
 
-        if "categoria" in ev:
-            if "ATM" in ev["categoria"] or "Cajero" in ev["categoria"]:
-                st.write("• ⚠️ **Canal Físico Crítico (ATM):** Retiro de efectivo presencial en Cajero Automático.")
-                factores_hallados = True
-            elif "E-commerce" in ev["categoria"] or "Web" in ev["categoria"]:
-                st.write("• ⚠️ **Comercio Digital (E-commerce):** Operación en línea sin presencia física de tarjeta.")
-                factores_hallados = True
+    st.markdown("---")
+    st.subheader(f"📜 Feed Transaccional Registrado - {region_sel}")
 
-        if ev["metodo"] in ["Yape", "Plin"] and ev["monto"] > 400:
-            st.write(f"• ⚠️ **Anomalía en Monedero Digital:** Operación por {ev['metodo']} (S/ {ev['monto']:,.2f}) supera el umbral seguro de S/ 400.")
-            factores_hallados = True
-        elif ev["monto"] >= 800:
-            st.write(f"• ⚠️ **Monto Elevado:** Importe de la transacción (S/ {ev['monto']:,.2f}) excede el promedio habitual.")
-            factores_hallados = True
+    if not df_stream.empty:
+        st.dataframe(
+            df_stream,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Monto (S/)": st.column_config.NumberColumn(format="S/ %.2f"),
+                "Distancia (km)": st.column_config.NumberColumn(format="%.1f km")
+            }
+        )
+    else:
+        st.info("💡 Selecciona una región, define el perfil de tráfico y marca **'🔴 Iniciar Streaming'** para comenzar la simulación.")
 
-        if ev["distancia"] > 20:
-            st.write(f"• ⚠️ **Geolocalización Inusual:** Transacción realizada a {ev['distancia']:.1f} km del domicilio registrado.")
-            factores_hallados = True
-
-        if ev["tx_recientes"] >= 3:
-            st.write(f"• ⚠️ **Alta Velocidad Operativa:** Frecuencia de {ev['tx_recientes']} transacciones en los últimos 15 minutos.")
-            factores_hallados = True
-
-        if ev.get("comercio_nuevo", True):
-            st.write("• ⚠️ **Comercio Sin Historial:** Primera interacción registrada del usuario con este establecimiento.")
-            factores_hallados = True
-
-        if ev.get("dia_semana") in ["Sábado", "Domingo"]:
-            st.write(f"• ⚠️ **Patrón de Fin de Semana:** Transacción efectuada en día {ev.get('dia_semana')}.")
-            factores_hallados = True
-
-        if not factores_hallados:
-            st.write("• ✅ **Sin anomalías detectadas:** La operación se ajusta al perfil de comportamiento habitual.")
-
-        st.progress(float(prob))
+    # Bucle de actualización automática
+    if run_stream:
+        import time
+        time.sleep(velocidad)
+        st.rerun()
 
     # ----------------------------------------------------------------------
     # SIMULADOR DE FLUJO TRANSACCIONAL EN TIEMPO REAL
